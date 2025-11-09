@@ -12,6 +12,9 @@ node_modules/
 dist/
 build/
 
+# Temp files
+tmp/
+
 # macOS
 .DS_Store
 
@@ -20,7 +23,11 @@ build/
 nohup.out
 
 # IDE
+.windsurf
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# LLM
+.gemini
