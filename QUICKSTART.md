@@ -11,7 +11,7 @@ npm start
 The app will:
 - ✅ Run in the background
 - ✅ Create a system tray icon
-- ✅ Track activity every 10 seconds
+- ✅ Track activity every 5 seconds
 - ✅ Store data in `~/activity.db`
 - ⚠️  Run in offline mode (no API configured)
 
@@ -116,6 +116,6 @@ Once you have an API endpoint ready:
 - Only works on macOS
 - Only works for: Chrome, Safari, Brave, Arc, Edge
 
-**Want more frequent tracking?**
-- Edit `src/tracker.js` line 13: `this.intervalMs = 5000` (5 seconds)
+**Want a different tracking cadence?**
+- Edit `src/tracker.js` line 13: set `this.intervalMs` to your desired interval (e.g., `2000` for 2 seconds)
 - Edit `src/networkSync.js` line 7: `this.syncIntervalMs = 10 * 60 * 1000` (10 minutes)

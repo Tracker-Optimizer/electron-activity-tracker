@@ -11,7 +11,7 @@ An Electron-based background application that tracks your computer activity and 
 
 ## 🚀 Features
 
-- **Active Window Tracking**: Captures the currently active window and process every 10 seconds
+- **Active Window Tracking**: Captures the currently active window and process every 5 seconds
 - **Browser URL Tracking**: Extracts actual URLs from Chrome, Safari, Brave, Arc, and Edge (macOS only)
 - **Mouse & Keyboard Activity**: Tracks mouse movements to detect idle vs active time (macOS only)
 - **System Metrics**: Records CPU and memory usage
@@ -68,7 +68,7 @@ npm start
 
 The app will:
 
-- Start tracking activity every 10 seconds
+- Start tracking activity every 5 seconds
 - Store data in `~/activity.db`
 - Sync data to your API every 30 minutes
 - Run in the background with a system tray icon
@@ -237,7 +237,7 @@ Without this permission, the app will still track windows and URLs but won't det
 
 ## 🛠️ Configuration
 
-- **Tracking Interval**: Edit `intervalMs` in `src/tracker.js` (default: 10 seconds)
+- **Tracking Interval**: Edit `intervalMs` in `src/tracker.js` (default: 5 seconds)
 - **Sync Interval**: Edit `syncIntervalMs` in `src/networkSync.js` (default: 30 minutes)
 - **Database Location**: Edit `dbPath` in `src/tracker.js` (default: `~/activity.db`)
 
