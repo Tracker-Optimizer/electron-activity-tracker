@@ -14,7 +14,7 @@ Instead of directly monitoring mouse/keyboard events (which requires permissions
 
 ## What's Tracked
 
-- **Input Events**: Number of detected user interactions in the tracking interval (10 seconds)
+- **Input Events**: Number of detected user interactions in the tracking interval (5 seconds)
 - **Active Status**: Boolean flag indicating if user was active during the interval
 - **Privacy-First**: No actual positions, clicks, or keystrokes are recorded
 
