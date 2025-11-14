@@ -50,6 +50,13 @@ class NetworkSync {
 
       console.log(`📤 Syncing ${sessions.length} aggregated sessions from ${unsyncedData.length} raw records...`);
 
+      // Batch syncing to avoid timeouts with large datasets
+      const batchSize = 100; // 100 sessions per batch
+      if (sessions.length > batchSize) {
+        console.log(`📦 Breaking into batches of ${batchSize} sessions...`);
+        return await this.syncInBatches(sessions, sourceIds, batchSize);
+      }
+
       // Optional: include authenticated user ID if authManager is provided
       let userId = null;
       let authCookie = null;
@@ -120,10 +127,13 @@ class NetworkSync {
       });
 
       if (response.status >= 200 && response.status < 300) {
+        console.log(`✅ Server accepted ${sessions.length} sessions (${sourceIds.length} raw records)`);
+        console.log(`🔍 sourceIds to mark as synced:`, sourceIds.slice(0, 10), sourceIds.length > 10 ? `... and ${sourceIds.length - 10} more` : '');
+        
         // Mark all underlying raw records as synced in local database
         this.tracker.markAsSynced(sourceIds);
         
-        console.log(`✅ Successfully synced ${sessions.length} sessions (${sourceIds.length} raw records)`);
+        console.log(`✅ Successfully completed sync`);
         return { success: true, synced: sessions.length, rawSynced: sourceIds.length };
       } else {
         console.error(`❌ Sync failed with status: ${response.status}`);
@@ -142,6 +152,128 @@ class NetworkSync {
       }
       
       return { success: false, error: error.message };
+    }
+  }
+
+  async syncInBatches(sessions, sourceIds, batchSize) {
+    let totalSynced = 0;
+    let totalRawSynced = 0;
+    
+    // Create a map of session index to source IDs
+    const sessionSourceMap = new Map();
+    sessions.forEach((session, idx) => {
+      sessionSourceMap.set(idx, session.source_ids || []);
+    });
+    
+    for (let i = 0; i < sessions.length; i += batchSize) {
+      const batch = sessions.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(sessions.length / batchSize);
+      
+      // Collect source IDs for this batch
+      const batchSourceIds = [];
+      for (let j = i; j < i + batch.length; j++) {
+        const sessionSources = sessionSourceMap.get(j) || [];
+        batchSourceIds.push(...sessionSources);
+      }
+      
+      console.log(`📦 Syncing batch ${batchNum}/${totalBatches} (${batch.length} sessions, ${batchSourceIds.length} raw records)...`);
+      
+      try {
+        const result = await this.syncBatch(batch, batchSourceIds);
+        if (result.success) {
+          totalSynced += result.synced || 0;
+          totalRawSynced += result.rawSynced || 0;
+        } else {
+          console.error(`❌ Batch ${batchNum} failed:`, result.error);
+          // Continue with next batch instead of failing completely
+        }
+      } catch (error) {
+        console.error(`❌ Batch ${batchNum} error:`, error.message);
+        // Continue with next batch
+      }
+      
+      // Small delay between batches to avoid overwhelming the server
+      if (i + batchSize < sessions.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+      }
+    }
+    
+    console.log(`✅ Batch sync complete: ${totalSynced} sessions (${totalRawSynced} raw records)`);
+    return { success: true, synced: totalSynced, rawSynced: totalRawSynced };
+  }
+
+  async syncBatch(sessions, batchSourceIds) {
+    let userId = null;
+    let authCookie = null;
+
+    if (this.authManager) {
+      const user = this.authManager.getUser?.();
+      if (user && user.id) {
+        userId = user.id;
+      }
+
+      const authHeadersConfig = this.authManager.getAuthHeaders?.() || {};
+      authCookie = authHeadersConfig.headers?.Cookie;
+    }
+
+    const payload = {
+      userId,
+      activities: sessions.map(session => ({
+        timestamp: session.startTimestamp,
+        start_timestamp: session.startTimestamp,
+        end_timestamp: session.endTimestamp,
+        duration_seconds: session.durationSeconds,
+        window_title: session.window_title,
+        process_name: session.process_name,
+        process_path: session.process_path,
+        platform: session.platform,
+        browser_url: session.browser_url,
+        browser_tab_title: session.browser_tab_title,
+        cpu_usage: session.cpu_usage_avg,
+        memory_usage: session.memory_usage_avg,
+        mouse_movements: session.mouse_movements_total,
+        input_events: session.input_events_total,
+        is_user_active: session.is_user_active,
+        sample_count: session.sample_count
+      })),
+      metadata: {
+        total_records: batchSourceIds.length,
+        total_sessions: sessions.length,
+        sync_timestamp: new Date().toISOString(),
+        device_platform: process.platform
+      }
+    };
+
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+
+    if (authCookie) {
+      headers['Cookie'] = authCookie;
+    }
+
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+
+    const response = await axios.post(this.apiEndpoint, payload, {
+      headers,
+      timeout: 30000
+    });
+
+    if (response.status >= 200 && response.status < 300) {
+      console.log(`✅ Server accepted ${sessions.length} sessions (${batchSourceIds.length} raw records)`);
+      console.log(`🔍 sourceIds to mark as synced:`, batchSourceIds.slice(0, 10), batchSourceIds.length > 10 ? `... and ${batchSourceIds.length - 10} more` : '');
+      
+      // Mark all underlying raw records as synced in local database
+      this.tracker.markAsSynced(batchSourceIds);
+      
+      console.log(`✅ Successfully completed sync`);
+      return { success: true, synced: sessions.length, rawSynced: batchSourceIds.length };
+    } else {
+      console.error(`❌ Sync failed with status: ${response.status}`);
+      return { success: false, error: `HTTP ${response.status}` };
     }
   }
 }
