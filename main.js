@@ -135,7 +135,7 @@ async function startTracking() {
 
   // Initialize network sync (every 30 minutes)
   if (process.env.API_ENDPOINT) {
-    networkSync = new NetworkSync(tracker);
+    networkSync = new NetworkSync(tracker, authManager);
     networkSync.startSync();
     console.log('✅ Network sync enabled (every 30 minutes)');
   } else {

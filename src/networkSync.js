@@ -1,8 +1,10 @@
 const axios = require('axios');
+const { aggregateActivitiesToSessions } = require('./sessionAggregator');
 
 class NetworkSync {
-  constructor(tracker) {
+  constructor(tracker, authManager = null) {
     this.tracker = tracker;
+    this.authManager = authManager;
     this.syncInterval = null;
     this.syncIntervalMs = 30 * 60 * 1000; // 30 minutes
     this.apiEndpoint = process.env.API_ENDPOINT;
@@ -38,29 +40,60 @@ class NetworkSync {
         return { success: true, synced: 0 };
       }
 
-      console.log(`📤 Syncing ${unsyncedData.length} records...`);
+      // Aggregate raw samples into higher-level sessions
+      const { sessions, sourceIds } = aggregateActivitiesToSessions(unsyncedData);
 
-      // Prepare payload
+      if (sessions.length === 0) {
+        console.log('⚠️ Aggregation produced no sessions; skipping sync');
+        return { success: false, synced: 0, error: 'No sessions after aggregation' };
+      }
+
+      console.log(`📤 Syncing ${sessions.length} aggregated sessions from ${unsyncedData.length} raw records...`);
+
+      // Optional: include authenticated user ID if authManager is provided
+      let userId = null;
+      let authCookie = null;
+
+      if (this.authManager) {
+        const user = this.authManager.getUser?.();
+        if (user && user.id) {
+          userId = user.id;
+        }
+
+        const authHeadersConfig = this.authManager.getAuthHeaders?.() || {};
+        authCookie = authHeadersConfig.headers?.Cookie;
+      }
+
       const payload = {
-        activities: unsyncedData.map(record => ({
-          id: record.id,
-          timestamp: record.timestamp,
-          window_title: record.window_title,
-          process_name: record.process_name,
-          process_path: record.process_path,
-          cpu_usage: parseFloat(record.cpu_usage),
-          memory_usage: parseFloat(record.memory_usage),
-          platform: record.platform,
-          browser_url: record.browser_url,
-          browser_tab_title: record.browser_tab_title,
-          mouse_movements: record.mouse_movements || 0,
-          input_events: record.input_events || record.mouse_movements || 0,
-          is_user_active: record.is_user_active === 1,
-          created_at: record.created_at,
-          updated_at: record.updated_at || record.created_at
+        userId,
+        activities: sessions.map(session => ({
+          // Time and duration
+          timestamp: session.startTimestamp,
+          start_timestamp: session.startTimestamp,
+          end_timestamp: session.endTimestamp,
+          duration_seconds: session.durationSeconds,
+
+          // App/window/browser data
+          window_title: session.window_title,
+          process_name: session.process_name,
+          process_path: session.process_path,
+          platform: session.platform,
+          browser_url: session.browser_url,
+          browser_tab_title: session.browser_tab_title,
+
+          // Aggregated metrics
+          cpu_usage: session.cpu_usage_avg,
+          memory_usage: session.memory_usage_avg,
+          mouse_movements: session.mouse_movements_total,
+          input_events: session.input_events_total,
+          is_user_active: session.is_user_active,
+
+          // Debug/analytics fields (optional on server)
+          sample_count: session.sample_count
         })),
         metadata: {
           total_records: unsyncedData.length,
+          total_sessions: sessions.length,
           sync_timestamp: new Date().toISOString(),
           device_platform: process.platform
         }
@@ -70,6 +103,11 @@ class NetworkSync {
       const headers = {
         'Content-Type': 'application/json'
       };
+
+      // Include Better Auth cookie if available
+      if (authCookie) {
+        headers['Cookie'] = authCookie;
+      }
 
       // Add API key if configured
       if (this.apiKey) {
@@ -82,12 +120,11 @@ class NetworkSync {
       });
 
       if (response.status >= 200 && response.status < 300) {
-        // Mark as synced in local database
-        const ids = unsyncedData.map(r => r.id);
-        this.tracker.markAsSynced(ids);
+        // Mark all underlying raw records as synced in local database
+        this.tracker.markAsSynced(sourceIds);
         
-        console.log(`✅ Successfully synced ${unsyncedData.length} records`);
-        return { success: true, synced: unsyncedData.length };
+        console.log(`✅ Successfully synced ${sessions.length} sessions (${sourceIds.length} raw records)`);
+        return { success: true, synced: sessions.length, rawSynced: sourceIds.length };
       } else {
         console.error(`❌ Sync failed with status: ${response.status}`);
         return { success: false, error: `HTTP ${response.status}` };

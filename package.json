@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "view-data": "node view-data.js",
+    "preview:sessions": "electron scripts/preview-sessions.js",
     "package:mac": "electron-builder --mac",
     "package:win": "electron-builder --win",
     "package:linux": "electron-builder --linux",
