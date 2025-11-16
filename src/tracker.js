@@ -215,13 +215,26 @@ class ActivityTracker {
   }
 
   markAsSynced(ids) {
-    if (!ids || ids.length === 0) return;
+    if (!ids || ids.length === 0) {
+      console.log('⚠️ markAsSynced called with empty or null ids');
+      return;
+    }
     
-    const placeholders = ids.map(() => '?').join(',');
-    const stmt = this.db.prepare(`UPDATE activities SET synced = 1 WHERE id IN (${placeholders})`);
-    stmt.run(...ids);
-    
-    console.log(`✅ Marked ${ids.length} records as synced`);
+    try {
+      const placeholders = ids.map(() => '?').join(',');
+      const stmt = this.db.prepare(`UPDATE activities SET synced = 1 WHERE id IN (${placeholders})`);
+      const result = stmt.run(...ids);
+      
+      console.log(`✅ Marked ${ids.length} records as synced (${result.changes} rows affected)`);
+      
+      // Verify the update
+      const verifyStmt = this.db.prepare(`SELECT COUNT(*) as count FROM activities WHERE synced = 1 AND id IN (${placeholders})`);
+      const verified = verifyStmt.get(...ids);
+      console.log(`🔍 Verification: ${verified.count}/${ids.length} records confirmed as synced`);
+    } catch (error) {
+      console.error('❌ Error in markAsSynced:', error.message);
+      throw error;
+    }
   }
 
   getDatabase() {
